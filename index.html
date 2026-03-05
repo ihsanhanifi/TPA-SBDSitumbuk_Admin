@@ -590,9 +590,6 @@
 // ============================================================
 // DATA & STATE
 // ============================================================
-// ============================================================
-// DATA & STATE
-// ============================================================
 let students = JSON.parse(localStorage.getItem('tpa_students') || '[]');
 let filtered = [];
 let currentPage = 1;
@@ -603,12 +600,13 @@ let editingId = null;
 // GAS URL MANAGEMENT
 // ============================================================
 const GAS_URL_KEY = 'tpa_gas_url';
-
 function getGasUrl() {
-  return localStorage.getItem(GAS_URL_KEY) || document.getElementById('gasUrl')?.value?.trim() || '';
+  return localStorage.getItem(GAS_URL_KEY) || '';
 }
 
-// GAS Code template shown in settings
+// ============================================================
+// GAS CODE TEMPLATE (ditampilkan di tab Pengaturan)
+// ============================================================
 const GAS_CODE = `// ====================================================
 // Google Apps Script untuk TPA - Versi Multi-Project
 // Pasang di: script.google.com → New Project
@@ -620,7 +618,6 @@ function doPost(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
 
     if (data.action === "pending") {
-      // Pendaftaran dari orang tua → masuk sheet "Pending"
       var sheetP = ss.getSheetByName("Pending") || ss.insertSheet("Pending");
       if (sheetP.getLastRow() === 0) {
         sheetP.appendRow(["No.Reg","NIK","No KK","Nama","JK","Tempat Lahir","Tgl Lahir",
@@ -632,9 +629,7 @@ function doPost(e) {
         data.tempatLahir||"",data.tglLahir||"",data.kelas||"",data.status||"Pending",
         data.tahunMasuk||"",data.ayah||"",data.ibu||"",data.pekAyah||"",data.pekIbu||"",
         data.telp||"",data.email||"",data.alamat||"",data.catatan||"",data.tglDaftar||""]);
-
     } else {
-      // Add/Update/Delete dari Admin → masuk sheet "Data Santri"
       var sheet = ss.getSheetByName("Data Santri") || ss.insertSheet("Data Santri");
       if (sheet.getLastRow() === 0) {
         sheet.appendRow(["NIS","NIK","No KK","Nama","JK","Tempat Lahir","Tgl Lahir",
@@ -646,10 +641,19 @@ function doPost(e) {
         data.tempatLahir||"",data.tglLahir||"",data.kelas||"",data.status||"",
         data.tahunMasuk||"",data.ayah||"",data.ibu||"",data.pekAyah||"",data.pekIbu||"",
         data.telp||"",data.email||"",data.alamat||"",data.catatan||"",data.tglDaftar||""];
-      if (data.action === "add") {
+      if (data.action === "add" || data.action === "approve_pending") {
         var ex = findRowByNIS(sheet, data.nis);
         if (ex > 0) sheet.getRange(ex,1,1,row.length).setValues([row]);
         else sheet.appendRow(row);
+        if (data.action === "approve_pending") {
+          var sp = ss.getSheetByName("Pending");
+          if (sp && sp.getLastRow() >= 2) {
+            var regs = sp.getRange(2,1,sp.getLastRow()-1,1).getValues();
+            for (var i=0; i<regs.length; i++) {
+              if (String(regs[i][0]).trim() === String(data.noReg||"").trim()) { sp.deleteRow(i+2); break; }
+            }
+          }
+        }
       } else if (data.action === "update") {
         var rn = findRowByNIS(sheet, data.nis);
         if (rn > 0) sheet.getRange(rn,1,1,row.length).setValues([row]);
@@ -657,50 +661,21 @@ function doPost(e) {
       } else if (data.action === "delete") {
         var dn = findRowByNIS(sheet, data.nis);
         if (dn > 0) sheet.deleteRow(dn);
-      } else if (data.action === "approve_pending") {
-        // Hapus dari sheet Pending berdasarkan noReg
-        var sp = ss.getSheetByName("Pending");
-        if (sp) {
-          var lr = sp.getLastRow();
-          if (lr >= 2) {
-            var regs = sp.getRange(2,1,lr-1,1).getValues();
-            for (var i=0; i<regs.length; i++) {
-              if (String(regs[i][0]).trim() === String(data.noReg).trim()) {
-                sp.deleteRow(i+2); break;
-              }
-            }
-          }
-        }
-        // Tambah ke Data Santri
-        var ex2 = findRowByNIS(sheet, data.nis);
-        if (ex2 > 0) sheet.getRange(ex2,1,1,row.length).setValues([row]);
-        else sheet.appendRow(row);
       } else if (data.action === "reject_pending") {
         var sp2 = ss.getSheetByName("Pending");
-        if (sp2) {
-          var lr2 = sp2.getLastRow();
-          if (lr2 >= 2) {
-            var regs2 = sp2.getRange(2,1,lr2-1,1).getValues();
-            for (var j=0; j<regs2.length; j++) {
-              if (String(regs2[j][0]).trim() === String(data.noReg).trim()) {
-                sp2.deleteRow(j+2); break;
-              }
-            }
+        if (sp2 && sp2.getLastRow() >= 2) {
+          var regs2 = sp2.getRange(2,1,sp2.getLastRow()-1,1).getValues();
+          for (var j=0; j<regs2.length; j++) {
+            if (String(regs2[j][0]).trim() === String(data.noReg||"").trim()) { sp2.deleteRow(j+2); break; }
           }
         }
       }
     }
-
-    return ContentService
-      .createTextOutput(JSON.stringify({status:"ok"}))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({status:"ok"})).setMimeType(ContentService.MimeType.JSON);
   } catch(err) {
-    return ContentService
-      .createTextOutput(JSON.stringify({status:"error", msg:err.toString()}))
-      .setMimeType(ContentService.MimeType.JSON);
+    return ContentService.createTextOutput(JSON.stringify({status:"error",msg:err.toString()})).setMimeType(ContentService.MimeType.JSON);
   }
 }
-
 function findRowByNIS(sheet, nis) {
   if (!nis) return -1;
   var lastRow = sheet.getLastRow();
@@ -711,30 +686,18 @@ function findRowByNIS(sheet, nis) {
   }
   return -1;
 }
-
 function doGet(e) {
-  // GET: ambil data Pending dari spreadsheet
   var action = e.parameter.action || "";
   if (action === "get_pending") {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var sp = ss.getSheetByName("Pending");
-    if (!sp || sp.getLastRow() < 2) {
-      return ContentService.createTextOutput(JSON.stringify({status:"ok", data:[]}))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
+    if (!sp || sp.getLastRow() < 2) return ContentService.createTextOutput(JSON.stringify({status:"ok",data:[]})).setMimeType(ContentService.MimeType.JSON);
     var rows = sp.getRange(2,1,sp.getLastRow()-1,19).getValues();
-    var headers = ["noReg","nik","noKK","nama","jk","tempatLahir","tglLahir","kelas","status",
-      "tahunMasuk","ayah","ibu","pekAyah","pekIbu","telp","email","alamat","catatan","tglDaftar"];
-    var data = rows.map(function(r){
-      var obj = {};
-      headers.forEach(function(h,i){ obj[h] = r[i]||""; });
-      return obj;
-    });
-    return ContentService.createTextOutput(JSON.stringify({status:"ok", data:data}))
-      .setMimeType(ContentService.MimeType.JSON);
+    var headers = ["noReg","nik","noKK","nama","jk","tempatLahir","tglLahir","kelas","status","tahunMasuk","ayah","ibu","pekAyah","pekIbu","telp","email","alamat","catatan","tglDaftar"];
+    var data = rows.map(function(r){ var obj={}; headers.forEach(function(h,i){ obj[h]=r[i]||""; }); return obj; });
+    return ContentService.createTextOutput(JSON.stringify({status:"ok",data:data})).setMimeType(ContentService.MimeType.JSON);
   }
-  return ContentService.createTextOutput(JSON.stringify({status:"ok", msg:"TPA API Ready"}))
-    .setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify({status:"ok",msg:"TPA API Ready"})).setMimeType(ContentService.MimeType.JSON);
 }`;
 
 document.getElementById('gasCode').value = GAS_CODE;
@@ -794,11 +757,9 @@ function simpanData() {
   const jk = document.getElementById('f-jk').value;
   const kelas = document.getElementById('f-kelas').value;
   if (!nama || !jk || !kelas) { showToast('Nama, JK, dan Kelas wajib diisi!', 'error'); return; }
-
   const v = id => (document.getElementById(id)?.value || '').trim();
   const nis = v('f-nis') || generateNIS();
   const id = editingId || Date.now().toString();
-
   const student = {
     id, nis, nama,
     nik: v('f-nik'), noKK: v('f-kk'), jk,
@@ -814,7 +775,6 @@ function simpanData() {
       ? (students.find(s => s.id === editingId)?.tglDaftar || new Date().toISOString().split('T')[0])
       : new Date().toISOString().split('T')[0]
   };
-
   if (editingId) {
     const idx = students.findIndex(s => s.id === editingId);
     students[idx] = student;
@@ -983,17 +943,15 @@ function filterData() {
 // DASHBOARD
 // ============================================================
 function renderDashboard() {
-  const pendingLocal = JSON.parse(localStorage.getItem('tpa_pending_cache') || '[]');
+  const pendingCache = JSON.parse(localStorage.getItem('tpa_pending_cache') || '[]');
   document.getElementById('s-total').textContent = students.length;
   document.getElementById('s-laki').textContent = students.filter(s => s.jk==='Laki-laki').length;
   document.getElementById('s-perempuan').textContent = students.filter(s => s.jk==='Perempuan').length;
   document.getElementById('s-aktif').textContent = students.filter(s => s.status==='Aktif').length;
-  document.getElementById('s-pending').textContent = pendingLocal.length;
-
+  document.getElementById('s-pending').textContent = pendingCache.length;
   const badge = document.getElementById('pending-badge');
-  if (pendingLocal.length > 0) { badge.textContent = pendingLocal.length; badge.style.display = ''; }
+  if (pendingCache.length > 0) { badge.textContent = pendingCache.length; badge.style.display = ''; }
   else { badge.style.display = 'none'; }
-
   const recent = [...students].reverse().slice(0, 6);
   document.getElementById('db-recent').innerHTML = recent.length === 0
     ? `<tr><td colspan="5"><div class="empty-state"><div class="emoji">📚</div><p>Belum ada data</p></div></td></tr>`
@@ -1013,7 +971,6 @@ function renderCharts() {
     const w = Math.round((n/max)*100);
     return `<div class="bar-row"><div class="bar-label">${k}</div><div class="bar-track"><div class="bar-fill" style="width:${w}%"><span class="bar-num">${n||''}</span></div></div></div>`;
   }).join('');
-
   const statuses = [['Aktif','#0d5c3a'],['Tidak Aktif','#e53e3e'],['Lulus','#c49a2a'],['Pending','#dd6b20']];
   const maxS = Math.max(...statuses.map(([s]) => students.filter(x => x.status===s).length), 1);
   document.getElementById('chart-status').innerHTML = statuses.map(([s, color]) => {
@@ -1029,33 +986,25 @@ function renderCharts() {
 async function renderPending() {
   const container = document.getElementById('pending-container');
   const gasUrl = getGasUrl();
-
   if (!gasUrl) {
-    container.innerHTML = `<div class="empty-state"><div class="emoji">⚙️</div><p>URL Google Apps Script belum dikonfigurasi.<br>Pergi ke tab <strong>Pengaturan</strong> dan masukkan URL GAS Anda.</p></div>`;
+    container.innerHTML = `<div class="empty-state"><div class="emoji">⚙️</div><p>URL Google Apps Script belum dikonfigurasi.<br>Pergi ke tab <strong>Pengaturan</strong> dan masukkan URL GAS.</p></div>`;
     return;
   }
-
   container.innerHTML = `<div class="empty-state"><div class="emoji">⏳</div><p>Mengambil data pendaftaran...</p></div>`;
-
   try {
-    const res = await fetch(`${gasUrl}?action=get_pending`, { mode: 'cors' });
+    const res = await fetch(`${gasUrl}?action=get_pending`);
     const json = await res.json();
     const pending = json.data || [];
-
-    // Cache locally for dashboard badge
     localStorage.setItem('tpa_pending_cache', JSON.stringify(pending));
     renderDashboard();
-
     if (pending.length === 0) {
       container.innerHTML = `<div class="empty-state"><div class="emoji">📭</div><p>Tidak ada pendaftaran baru dari orang tua</p></div>`;
       return;
     }
-
     container.innerHTML = `
-      <div style="margin-bottom:12px;display:flex;gap:10px;align-items:center;">
+      <div style="margin-bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
         <span style="font-weight:700;color:var(--emerald);">${pending.length} pendaftaran menunggu</span>
         <button class="btn btn-secondary btn-sm" onclick="renderPending()">🔄 Refresh</button>
-        <button class="btn btn-danger btn-sm" onclick="clearAllPending()">🗑 Hapus Semua</button>
       </div>
       <div class="pending-grid">${pending.map((p, i) =>
         `<div class="pending-card">
@@ -1077,18 +1026,18 @@ async function renderPending() {
             <div class="pending-row"><span class="pending-key">Tgl Daftar</span><span class="pending-val">${formatDate(p.tglDaftar)}</span></div>
           </div>
           <div class="pending-actions">
-            <button class="btn btn-primary btn-sm" style="flex:1;" onclick="approvePending(${i}, ${JSON.stringify(p).replace(/"/g,'&quot;')})">✅ Terima</button>
-            <button class="btn btn-danger btn-sm" onclick="rejectPending('${p.noReg}', '${p.nama}')">❌ Tolak</button>
+            <button class="btn btn-primary btn-sm" style="flex:1;" onclick='approvePending(${JSON.stringify(p)})'>✅ Terima</button>
+            <button class="btn btn-danger btn-sm" onclick="rejectPending('${p.noReg}','${(p.nama||'').replace(/'/g,"\\'")}')">❌ Tolak</button>
           </div>
         </div>`
       ).join('')}</div>`;
   } catch(err) {
-    container.innerHTML = `<div class="empty-state"><div class="emoji">❌</div><p>Gagal mengambil data dari GAS.<br><small>${err.message}</small><br><br><button class="btn btn-secondary btn-sm" onclick="renderPending()">🔄 Coba Lagi</button></p></div>`;
+    container.innerHTML = `<div class="empty-state"><div class="emoji">❌</div><p>Gagal mengambil data dari GAS.<br><small style="color:var(--red)">${err.message}</small><br><br><button class="btn btn-secondary btn-sm" onclick="renderPending()">🔄 Coba Lagi</button></p></div>`;
   }
 }
 
-async function approvePending(idx, p) {
-  if (typeof p === 'string') p = JSON.parse(p.replace(/&quot;/g, '"'));
+async function approvePending(p) {
+  if (typeof p === 'string') p = JSON.parse(p);
   const student = {
     id: Date.now().toString(),
     nis: generateNIS(),
@@ -1106,7 +1055,6 @@ async function approvePending(idx, p) {
   };
   students.push(student);
   saveLocal();
-  // Kirim approve ke GAS (hapus dari Pending + tambah ke Data Santri)
   await sendToSheet({...student, action:'approve_pending', noReg: p.noReg});
   showToast(`✅ ${p.nama} diterima sebagai santri baru!`, 'success');
   renderPending();
@@ -1120,14 +1068,10 @@ async function rejectPending(noReg, nama) {
   renderPending();
 }
 
-async function clearAllPending() {
-  if (!confirm('Hapus semua pendaftaran yang masuk?')) return;
-  localStorage.setItem('tpa_pending_cache', '[]');
-  showToast('Semua pendaftaran dibersihkan (hanya lokal). Hapus manual di sheet Pending Google Sheets jika perlu.', 'warn');
-  renderPending();
-  renderDashboard();
-}
-
+// ============================================================
+// EXPORT EXCEL
+// ============================================================
+function exportExcel() {
   if (students.length === 0) { showToast('Tidak ada data!', 'error'); return; }
   const data = students.map((s, i) => ({
     'No': i+1, 'NIS': s.nis, 'NIK': s.nik||'', 'No. KK': s.noKK||'',
@@ -1204,8 +1148,7 @@ function exportPDF() {
     body: students.map((s,i) => [
       i+1, s.nis, s.nik||'-', s.nama, s.jk,
       `${s.tempatLahir||'-'}, ${formatDate(s.tglLahir)}`,
-      s.kelas, s.status,
-      `${s.ayah||'-'} / ${s.ibu||'-'}`, s.telp||'-', s.alamat||'-'
+      s.kelas, s.status, `${s.ayah||'-'} / ${s.ibu||'-'}`, s.telp||'-', s.alamat||'-'
     ]),
     styles: { fontSize:7.5, cellPadding:2.5, valign:'middle' },
     headStyles: { fillColor:[13,92,58], textColor:255, fontStyle:'bold', fontSize:8 },
@@ -1231,26 +1174,28 @@ async function sendToSheet(data) {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(data),
-      mode: 'no-cors' // GAS Web App butuh no-cors dari browser
+      mode: 'no-cors'
     });
-    // no-cors tidak bisa baca response, tapi request berhasil dikirim
   } catch(err) {
     console.warn('sendToSheet error:', err);
   }
 }
+
 function saveGasUrl() {
   const url = document.getElementById('gasUrl').value.trim();
   if (!url) { showToast('URL tidak boleh kosong!', 'error'); return; }
   localStorage.setItem(GAS_URL_KEY, url);
-  showToast('URL disimpan! ✅', 'success');
+  showToast('URL GAS disimpan! ✅', 'success');
 }
+
 async function testConnection() {
   const url = document.getElementById('gasUrl').value.trim();
   if (!url) { showToast('Masukkan URL terlebih dahulu!', 'error'); return; }
   showToast('Menguji koneksi...', '');
   try { await fetch(url, {mode:'no-cors'}); showToast('Koneksi berhasil! ✅', 'success'); }
-  catch { showToast('Koneksi gagal.', 'error'); }
+  catch { showToast('Koneksi gagal ❌', 'error'); }
 }
+
 function copyGASCode() {
   navigator.clipboard.writeText(GAS_CODE).then(() => showToast('Kode disalin! 📋', 'success'));
 }
@@ -1266,51 +1211,48 @@ function exportJSON() {
   a.click();
   showToast('Backup JSON berhasil! 💾', 'success');
 }
+
 function restoreJSON(e) {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = ev => {
     try {
       const data = JSON.parse(ev.target.result);
-      if (!Array.isArray(data)) throw new Error();
-      students = data; saveLocal();
-      filtered = [...students]; renderTable(); renderDashboard();
-      showToast(`${data.length} data dipulihkan! 📂`, 'success');
-    } catch { showToast('File JSON tidak valid!', 'error'); }
+      if (!Array.isArray(data)) throw new Error('Invalid');
+      students = data;
+      saveLocal(); filtered = [...students]; renderTable(); renderDashboard();
+      showToast(`${students.length} data berhasil dipulihkan! 🔄`, 'success');
+    } catch { showToast('File backup tidak valid!', 'error'); }
   };
-  reader.readAsText(file); e.target.value = '';
-}
-function hapusSemua() {
-  if (!confirm('⚠️ HAPUS SEMUA DATA?\n\nPastikan sudah backup!\nTindakan ini tidak dapat dibatalkan.')) return;
-  students = []; saveLocal(); filtered = []; renderTable(); renderDashboard();
-  showToast('Semua data dihapus.', 'error');
+  reader.readAsText(file);
+  e.target.value = '';
 }
 
 // ============================================================
-// UTILS
+// UTILITIES
 // ============================================================
 function saveLocal() { localStorage.setItem('tpa_students', JSON.stringify(students)); }
+
 function formatDate(d) {
   if (!d) return '-';
-  try { return new Date(d).toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'}); }
+  try { return new Date(d).toLocaleDateString('id-ID', { day:'2-digit', month:'long', year:'numeric' }); }
   catch { return d; }
 }
+
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); }));
+
 function showToast(msg, type='success') {
-  const c = document.getElementById('toastContainer');
+  const colors = { success:'#0d5c3a', error:'#e53e3e', warn:'#dd6b20', '':'#555' };
   const t = document.createElement('div');
-  t.className = `toast ${type}`;
-  const icons = {success:'✅', error:'❌', warn:'⚠️', '':'⏳'};
-  t.innerHTML = `<span>${icons[type]||'ℹ️'}</span> ${msg}`;
-  c.appendChild(t);
-  setTimeout(() => { t.style.animation = 'tIn 0.3s ease reverse'; setTimeout(() => t.remove(), 300); }, 3200);
+  t.style.cssText = `position:fixed;bottom:24px;right:24px;background:${colors[type]||'#333'};color:#fff;padding:12px 20px;border-radius:10px;font-size:0.85rem;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.2);animation:slideIn 0.3s ease;max-width:320px;`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
 }
 
 // ============================================================
 // INIT
 // ============================================================
-filtered = [...students];
 renderDashboard();
 </script>
 </body>
