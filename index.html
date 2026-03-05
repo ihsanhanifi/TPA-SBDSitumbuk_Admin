@@ -590,69 +590,110 @@
 // ============================================================
 // DATA & STATE
 // ============================================================
+// ============================================================
+// DATA & STATE
+// ============================================================
 let students = JSON.parse(localStorage.getItem('tpa_students') || '[]');
 let filtered = [];
 let currentPage = 1;
 const perPage = 15;
 let editingId = null;
 
-const GAS_CODE = `function doPost(e) {
+// ============================================================
+// GAS URL MANAGEMENT
+// ============================================================
+const GAS_URL_KEY = 'tpa_gas_url';
+
+function getGasUrl() {
+  return localStorage.getItem(GAS_URL_KEY) || document.getElementById('gasUrl')?.value?.trim() || '';
+}
+
+// GAS Code template shown in settings
+const GAS_CODE = `// ====================================================
+// Google Apps Script untuk TPA - Versi Multi-Project
+// Pasang di: script.google.com → New Project
+// Deploy sebagai: Web App (Anyone can access)
+// ====================================================
+function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sheet = ss.getSheetByName("Data Santri") || ss.insertSheet("Data Santri");
 
-    // Buat header jika sheet masih kosong
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow(["NIS","NIK","No KK","Nama","JK","Tempat Lahir","Tgl Lahir",
-        "Kelas","Status","Thn Masuk","Ayah","Ibu","Pek Ayah","Pek Ibu","Telp","Email",
-        "Alamat","Catatan","Tgl Daftar"]);
-      sheet.getRange(1,1,1,19).setFontWeight("bold")
-        .setBackground("#0d5c3a").setFontColor("#ffffff");
-    }
-
-    // Susun array baris data (tanpa noReg agar konsisten)
-    var row = [
-      data.nis||"", data.nik||"", data.noKK||"",
-      data.nama||"", data.jk||"",
-      data.tempatLahir||"", data.tglLahir||"",
-      data.kelas||"", data.status||"", data.tahunMasuk||"",
-      data.ayah||"", data.ibu||"",
-      data.pekAyah||"", data.pekIbu||"",
-      data.telp||"", data.email||"",
-      data.alamat||"", data.catatan||"", data.tglDaftar||""
-    ];
-
-    if (data.action === "add") {
-      // Cek apakah NIS sudah ada (hindari duplikat)
-      var existing = findRowByNIS(sheet, data.nis);
-      if (existing > 0) {
-        // Sudah ada, update saja (jangan dobel)
-        sheet.getRange(existing, 1, 1, row.length).setValues([row]);
-      } else {
-        sheet.appendRow(row);
+    if (data.action === "pending") {
+      // Pendaftaran dari orang tua → masuk sheet "Pending"
+      var sheetP = ss.getSheetByName("Pending") || ss.insertSheet("Pending");
+      if (sheetP.getLastRow() === 0) {
+        sheetP.appendRow(["No.Reg","NIK","No KK","Nama","JK","Tempat Lahir","Tgl Lahir",
+          "Kelas","Status","Thn Masuk","Ayah","Ibu","Pek Ayah","Pek Ibu","Telp","Email",
+          "Alamat","Catatan","Tgl Daftar"]);
+        sheetP.getRange(1,1,1,19).setFontWeight("bold").setBackground("#c49a2a").setFontColor("#ffffff");
       }
+      sheetP.appendRow([data.noReg||"",data.nik||"",data.noKK||"",data.nama||"",data.jk||"",
+        data.tempatLahir||"",data.tglLahir||"",data.kelas||"",data.status||"Pending",
+        data.tahunMasuk||"",data.ayah||"",data.ibu||"",data.pekAyah||"",data.pekIbu||"",
+        data.telp||"",data.email||"",data.alamat||"",data.catatan||"",data.tglDaftar||""]);
 
-    } else if (data.action === "update") {
-      var rowNum = findRowByNIS(sheet, data.nis);
-      if (rowNum > 0) {
-        sheet.getRange(rowNum, 1, 1, row.length).setValues([row]);
-      } else {
-        // NIS tidak ditemukan, append sebagai baris baru
-        sheet.appendRow(row);
+    } else {
+      // Add/Update/Delete dari Admin → masuk sheet "Data Santri"
+      var sheet = ss.getSheetByName("Data Santri") || ss.insertSheet("Data Santri");
+      if (sheet.getLastRow() === 0) {
+        sheet.appendRow(["NIS","NIK","No KK","Nama","JK","Tempat Lahir","Tgl Lahir",
+          "Kelas","Status","Thn Masuk","Ayah","Ibu","Pek Ayah","Pek Ibu","Telp","Email",
+          "Alamat","Catatan","Tgl Daftar"]);
+        sheet.getRange(1,1,1,19).setFontWeight("bold").setBackground("#0d5c3a").setFontColor("#ffffff");
       }
-
-    } else if (data.action === "delete") {
-      var rowNum = findRowByNIS(sheet, data.nis);
-      if (rowNum > 0) {
-        sheet.deleteRow(rowNum);
+      var row = [data.nis||"",data.nik||"",data.noKK||"",data.nama||"",data.jk||"",
+        data.tempatLahir||"",data.tglLahir||"",data.kelas||"",data.status||"",
+        data.tahunMasuk||"",data.ayah||"",data.ibu||"",data.pekAyah||"",data.pekIbu||"",
+        data.telp||"",data.email||"",data.alamat||"",data.catatan||"",data.tglDaftar||""];
+      if (data.action === "add") {
+        var ex = findRowByNIS(sheet, data.nis);
+        if (ex > 0) sheet.getRange(ex,1,1,row.length).setValues([row]);
+        else sheet.appendRow(row);
+      } else if (data.action === "update") {
+        var rn = findRowByNIS(sheet, data.nis);
+        if (rn > 0) sheet.getRange(rn,1,1,row.length).setValues([row]);
+        else sheet.appendRow(row);
+      } else if (data.action === "delete") {
+        var dn = findRowByNIS(sheet, data.nis);
+        if (dn > 0) sheet.deleteRow(dn);
+      } else if (data.action === "approve_pending") {
+        // Hapus dari sheet Pending berdasarkan noReg
+        var sp = ss.getSheetByName("Pending");
+        if (sp) {
+          var lr = sp.getLastRow();
+          if (lr >= 2) {
+            var regs = sp.getRange(2,1,lr-1,1).getValues();
+            for (var i=0; i<regs.length; i++) {
+              if (String(regs[i][0]).trim() === String(data.noReg).trim()) {
+                sp.deleteRow(i+2); break;
+              }
+            }
+          }
+        }
+        // Tambah ke Data Santri
+        var ex2 = findRowByNIS(sheet, data.nis);
+        if (ex2 > 0) sheet.getRange(ex2,1,1,row.length).setValues([row]);
+        else sheet.appendRow(row);
+      } else if (data.action === "reject_pending") {
+        var sp2 = ss.getSheetByName("Pending");
+        if (sp2) {
+          var lr2 = sp2.getLastRow();
+          if (lr2 >= 2) {
+            var regs2 = sp2.getRange(2,1,lr2-1,1).getValues();
+            for (var j=0; j<regs2.length; j++) {
+              if (String(regs2[j][0]).trim() === String(data.noReg).trim()) {
+                sp2.deleteRow(j+2); break;
+              }
+            }
+          }
+        }
       }
     }
 
     return ContentService
       .createTextOutput(JSON.stringify({status:"ok"}))
       .setMimeType(ContentService.MimeType.JSON);
-
   } catch(err) {
     return ContentService
       .createTextOutput(JSON.stringify({status:"error", msg:err.toString()}))
@@ -660,28 +701,44 @@ const GAS_CODE = `function doPost(e) {
   }
 }
 
-// Helper: cari nomor baris berdasarkan NIS (kolom A = index 0)
 function findRowByNIS(sheet, nis) {
   if (!nis) return -1;
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) return -1;
-  var nisCol = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
-  for (var i = 0; i < nisCol.length; i++) {
-    if (String(nisCol[i][0]).trim() === String(nis).trim()) {
-      return i + 2; // +2 karena baris header = 1, data mulai dari 2
-    }
+  var nisCol = sheet.getRange(2,1,lastRow-1,1).getValues();
+  for (var i=0; i<nisCol.length; i++) {
+    if (String(nisCol[i][0]).trim() === String(nis).trim()) return i+2;
   }
   return -1;
 }
 
 function doGet(e) {
-  return ContentService
-    .createTextOutput(JSON.stringify({status:"ok", msg:"TPA API Ready"}))
+  // GET: ambil data Pending dari spreadsheet
+  var action = e.parameter.action || "";
+  if (action === "get_pending") {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sp = ss.getSheetByName("Pending");
+    if (!sp || sp.getLastRow() < 2) {
+      return ContentService.createTextOutput(JSON.stringify({status:"ok", data:[]}))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    var rows = sp.getRange(2,1,sp.getLastRow()-1,19).getValues();
+    var headers = ["noReg","nik","noKK","nama","jk","tempatLahir","tglLahir","kelas","status",
+      "tahunMasuk","ayah","ibu","pekAyah","pekIbu","telp","email","alamat","catatan","tglDaftar"];
+    var data = rows.map(function(r){
+      var obj = {};
+      headers.forEach(function(h,i){ obj[h] = r[i]||""; });
+      return obj;
+    });
+    return ContentService.createTextOutput(JSON.stringify({status:"ok", data:data}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  return ContentService.createTextOutput(JSON.stringify({status:"ok", msg:"TPA API Ready"}))
     .setMimeType(ContentService.MimeType.JSON);
 }`;
 
 document.getElementById('gasCode').value = GAS_CODE;
-const savedUrl = localStorage.getItem('tpa_gas_url');
+const savedUrl = localStorage.getItem(GAS_URL_KEY);
 if (savedUrl) document.getElementById('gasUrl').value = savedUrl;
 
 // Clock
@@ -753,7 +810,6 @@ function simpanData() {
     telp: v('f-telp'), email: v('f-email'),
     alamat: v('f-alamat'), catatan: v('f-catatan'),
     photo: document.getElementById('photoData').value,
-    // Saat edit: pertahankan tglDaftar lama; saat tambah baru: pakai hari ini
     tglDaftar: editingId
       ? (students.find(s => s.id === editingId)?.tglDaftar || new Date().toISOString().split('T')[0])
       : new Date().toISOString().split('T')[0]
@@ -927,19 +983,17 @@ function filterData() {
 // DASHBOARD
 // ============================================================
 function renderDashboard() {
-  const pending = JSON.parse(localStorage.getItem('tpa_pending') || '[]');
+  const pendingLocal = JSON.parse(localStorage.getItem('tpa_pending_cache') || '[]');
   document.getElementById('s-total').textContent = students.length;
   document.getElementById('s-laki').textContent = students.filter(s => s.jk==='Laki-laki').length;
   document.getElementById('s-perempuan').textContent = students.filter(s => s.jk==='Perempuan').length;
   document.getElementById('s-aktif').textContent = students.filter(s => s.status==='Aktif').length;
-  document.getElementById('s-pending').textContent = pending.length;
+  document.getElementById('s-pending').textContent = pendingLocal.length;
 
-  // Update pending badge
   const badge = document.getElementById('pending-badge');
-  if (pending.length > 0) { badge.textContent = pending.length; badge.style.display = ''; }
+  if (pendingLocal.length > 0) { badge.textContent = pendingLocal.length; badge.style.display = ''; }
   else { badge.style.display = 'none'; }
 
-  // Recent
   const recent = [...students].reverse().slice(0, 6);
   document.getElementById('db-recent').innerHTML = recent.length === 0
     ? `<tr><td colspan="5"><div class="empty-state"><div class="emoji">📚</div><p>Belum ada data</p></div></td></tr>`
@@ -948,8 +1002,6 @@ function renderDashboard() {
         const sb = { 'Aktif':'bg-green','Tidak Aktif':'bg-red','Lulus':'bg-gold' }[s.status]||'bg-blue';
         return `<tr><td>${photo}</td><td><div class="student-name">${s.nama}</div></td><td style="font-size:0.82rem;">${s.kelas}</td><td style="font-size:0.78rem;color:var(--muted);">${formatDate(s.tglDaftar)}</td><td><span class="badge ${sb}">${s.status}</span></td></tr>`;
       }).join('');
-
-  // Charts
   renderCharts();
 }
 
@@ -972,45 +1024,71 @@ function renderCharts() {
 }
 
 // ============================================================
-// PENDING (Dari Form Pendaftaran Orang Tua)
+// PENDING — Ambil dari GAS (GET request)
 // ============================================================
-function renderPending() {
-  const pending = JSON.parse(localStorage.getItem('tpa_pending') || '[]');
+async function renderPending() {
   const container = document.getElementById('pending-container');
-  if (pending.length === 0) {
-    container.innerHTML = `<div class="empty-state"><div class="emoji">📭</div><p>Tidak ada pendaftaran baru dari orang tua</p></div>`;
+  const gasUrl = getGasUrl();
+
+  if (!gasUrl) {
+    container.innerHTML = `<div class="empty-state"><div class="emoji">⚙️</div><p>URL Google Apps Script belum dikonfigurasi.<br>Pergi ke tab <strong>Pengaturan</strong> dan masukkan URL GAS Anda.</p></div>`;
     return;
   }
-  container.innerHTML = `<div class="pending-grid">${pending.map((p, i) =>
-    `<div class="pending-card">
-      <div class="pending-card-top">
-        ${p.photo ? `<img src="${p.photo}" class="pending-photo">` : `<div class="pending-photo-ph">👤</div>`}
-        <div>
-          <div class="pending-name">${p.nama}</div>
-          <div class="pending-meta">${p.kelas} · ${p.jk}</div>
-          <div class="pending-meta" style="color:var(--gold);font-weight:600;">${p.noReg}</div>
-        </div>
+
+  container.innerHTML = `<div class="empty-state"><div class="emoji">⏳</div><p>Mengambil data pendaftaran...</p></div>`;
+
+  try {
+    const res = await fetch(`${gasUrl}?action=get_pending`, { mode: 'cors' });
+    const json = await res.json();
+    const pending = json.data || [];
+
+    // Cache locally for dashboard badge
+    localStorage.setItem('tpa_pending_cache', JSON.stringify(pending));
+    renderDashboard();
+
+    if (pending.length === 0) {
+      container.innerHTML = `<div class="empty-state"><div class="emoji">📭</div><p>Tidak ada pendaftaran baru dari orang tua</p></div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="margin-bottom:12px;display:flex;gap:10px;align-items:center;">
+        <span style="font-weight:700;color:var(--emerald);">${pending.length} pendaftaran menunggu</span>
+        <button class="btn btn-secondary btn-sm" onclick="renderPending()">🔄 Refresh</button>
+        <button class="btn btn-danger btn-sm" onclick="clearAllPending()">🗑 Hapus Semua</button>
       </div>
-      <div class="pending-card-body">
-        <div class="pending-row"><span class="pending-key">Tempat/Tgl Lahir</span><span class="pending-val">${p.tempatLahir||'-'}, ${formatDate(p.tglLahir)}</span></div>
-        <div class="pending-row"><span class="pending-key">NIK</span><span class="pending-val">${p.nik||'-'}</span></div>
-        <div class="pending-row"><span class="pending-key">No. KK</span><span class="pending-val">${p.noKK||'-'}</span></div>
-        <div class="pending-row"><span class="pending-key">Ayah / Ibu</span><span class="pending-val">${p.ayah||'-'} / ${p.ibu||'-'}</span></div>
-        <div class="pending-row"><span class="pending-key">No. Telp</span><span class="pending-val">${p.telp||'-'}</span></div>
-        <div class="pending-row"><span class="pending-key">Alamat</span><span class="pending-val">${p.alamat||'-'}</span></div>
-        <div class="pending-row"><span class="pending-key">Tgl Daftar</span><span class="pending-val">${formatDate(p.tglDaftar)}</span></div>
-      </div>
-      <div class="pending-actions">
-        <button class="btn btn-primary btn-sm" style="flex:1;" onclick="approvePending(${i})">✅ Terima</button>
-        <button class="btn btn-danger btn-sm" onclick="rejectPending(${i})">❌ Tolak</button>
-      </div>
-    </div>`
-  ).join('')}</div>`;
+      <div class="pending-grid">${pending.map((p, i) =>
+        `<div class="pending-card">
+          <div class="pending-card-top">
+            ${p.photo ? `<img src="${p.photo}" class="pending-photo">` : `<div class="pending-photo-ph">👤</div>`}
+            <div>
+              <div class="pending-name">${p.nama}</div>
+              <div class="pending-meta">${p.kelas} · ${p.jk}</div>
+              <div class="pending-meta" style="color:var(--gold);font-weight:600;">${p.noReg}</div>
+            </div>
+          </div>
+          <div class="pending-card-body">
+            <div class="pending-row"><span class="pending-key">Tempat/Tgl Lahir</span><span class="pending-val">${p.tempatLahir||'-'}, ${formatDate(p.tglLahir)}</span></div>
+            <div class="pending-row"><span class="pending-key">NIK</span><span class="pending-val">${p.nik||'-'}</span></div>
+            <div class="pending-row"><span class="pending-key">No. KK</span><span class="pending-val">${p.noKK||'-'}</span></div>
+            <div class="pending-row"><span class="pending-key">Ayah / Ibu</span><span class="pending-val">${p.ayah||'-'} / ${p.ibu||'-'}</span></div>
+            <div class="pending-row"><span class="pending-key">No. Telp</span><span class="pending-val">${p.telp||'-'}</span></div>
+            <div class="pending-row"><span class="pending-key">Alamat</span><span class="pending-val">${p.alamat||'-'}</span></div>
+            <div class="pending-row"><span class="pending-key">Tgl Daftar</span><span class="pending-val">${formatDate(p.tglDaftar)}</span></div>
+          </div>
+          <div class="pending-actions">
+            <button class="btn btn-primary btn-sm" style="flex:1;" onclick="approvePending(${i}, ${JSON.stringify(p).replace(/"/g,'&quot;')})">✅ Terima</button>
+            <button class="btn btn-danger btn-sm" onclick="rejectPending('${p.noReg}', '${p.nama}')">❌ Tolak</button>
+          </div>
+        </div>`
+      ).join('')}</div>`;
+  } catch(err) {
+    container.innerHTML = `<div class="empty-state"><div class="emoji">❌</div><p>Gagal mengambil data dari GAS.<br><small>${err.message}</small><br><br><button class="btn btn-secondary btn-sm" onclick="renderPending()">🔄 Coba Lagi</button></p></div>`;
+  }
 }
 
-function approvePending(idx) {
-  const pending = JSON.parse(localStorage.getItem('tpa_pending') || '[]');
-  const p = pending[idx];
+async function approvePending(idx, p) {
+  if (typeof p === 'string') p = JSON.parse(p.replace(/&quot;/g, '"'));
   const student = {
     id: Date.now().toString(),
     nis: generateNIS(),
@@ -1028,35 +1106,28 @@ function approvePending(idx) {
   };
   students.push(student);
   saveLocal();
-  pending.splice(idx, 1);
-  localStorage.setItem('tpa_pending', JSON.stringify(pending));
-  sendToSheet({...student, action:'add'});
+  // Kirim approve ke GAS (hapus dari Pending + tambah ke Data Santri)
+  await sendToSheet({...student, action:'approve_pending', noReg: p.noReg});
   showToast(`✅ ${p.nama} diterima sebagai santri baru!`, 'success');
   renderPending();
   renderDashboard();
 }
 
-function rejectPending(idx) {
-  const pending = JSON.parse(localStorage.getItem('tpa_pending') || '[]');
-  const name = pending[idx].nama;
-  pending.splice(idx, 1);
-  localStorage.setItem('tpa_pending', JSON.stringify(pending));
-  showToast(`Pendaftaran ${name} ditolak.`, 'warn');
+async function rejectPending(noReg, nama) {
+  if (!confirm(`Tolak pendaftaran ${nama}?`)) return;
+  await sendToSheet({ action: 'reject_pending', noReg });
+  showToast(`Pendaftaran ${nama} ditolak.`, 'warn');
+  renderPending();
+}
+
+async function clearAllPending() {
+  if (!confirm('Hapus semua pendaftaran yang masuk?')) return;
+  localStorage.setItem('tpa_pending_cache', '[]');
+  showToast('Semua pendaftaran dibersihkan (hanya lokal). Hapus manual di sheet Pending Google Sheets jika perlu.', 'warn');
   renderPending();
   renderDashboard();
 }
 
-function clearPending() {
-  if (!confirm('Hapus semua data pendaftaran yang masuk?')) return;
-  localStorage.setItem('tpa_pending', '[]');
-  renderPending(); renderDashboard();
-  showToast('Semua pendaftaran dibersihkan.', 'warn');
-}
-
-// ============================================================
-// EXPORT EXCEL
-// ============================================================
-function exportExcel() {
   if (students.length === 0) { showToast('Tidak ada data!', 'error'); return; }
   const data = students.map((s, i) => ({
     'No': i+1, 'NIS': s.nis, 'NIK': s.nik||'', 'No. KK': s.noKK||'',
@@ -1153,7 +1224,7 @@ function exportPDF() {
 // GAS / SETTINGS
 // ============================================================
 async function sendToSheet(data) {
-  const url = localStorage.getItem('tpa_gas_url');
+  const url = getGasUrl();
   if (!url) return;
   try {
     await fetch(url, {
@@ -1170,7 +1241,7 @@ async function sendToSheet(data) {
 function saveGasUrl() {
   const url = document.getElementById('gasUrl').value.trim();
   if (!url) { showToast('URL tidak boleh kosong!', 'error'); return; }
-  localStorage.setItem('tpa_gas_url', url);
+  localStorage.setItem(GAS_URL_KEY, url);
   showToast('URL disimpan! ✅', 'success');
 }
 async function testConnection() {
